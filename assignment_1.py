@@ -33,25 +33,24 @@ def get_joint_distribution(target: str, df: pd.DataFrame):
     parents = EDGE[target]
     target_matched_rows = {val: (df[target] == val).values for val in data_range}
     tables = {f"{target} = {val}": {} for val in data_range}
-    if parents is not None:
+    if parents is not None:                                                     # conditional probability
         parents_ranges = [DATA_RANGE[parent] for parent in parents]
-        combinations = list(itertools.product(*parents_ranges))
+        combinations = list(itertools.product(*parents_ranges))                 # find all parent value combinations
         cols = [f"{', '.join(parents)} = {comb}" for comb in combinations]
-        for col, comb_val in zip(cols, combinations):
-            # filter by parent conditions
+        for col, comb_val in zip(cols, combinations):                           # for each parent conditions
             conditional_rows = (df[parents] == comb_val).values.all(axis=-1)
-            n_con_rows = conditional_rows.sum()
-            if n_con_rows == 0:
+            n_con_rows = conditional_rows.sum()                                 # number of rows satisfying all parent conditions
+            if n_con_rows == 0:                                                 # in case there is no row satisfying all parent conditions
                 for val in data_range:
                     tables[f"{target} = {val}"][col] = 0
             else:
                 for val in data_range:
                     conditional_target_rows = np.logical_and(target_matched_rows[val], conditional_rows)
-                    n_con_target_rows = conditional_target_rows.sum()
+                    n_con_target_rows = conditional_target_rows.sum()           # number of rows satisfying all parent conditions and also the target value
                     tables[f"{target} = {val}"][col] = n_con_target_rows / n_con_rows
 
     else:
-        for val in data_range:
+        for val in data_range:                                                  # directly calculate the unconditional probability
             tables[f"{target} = {val}"]["Nan"] = target_matched_rows[val].sum() / len(df)
     return tables
 
