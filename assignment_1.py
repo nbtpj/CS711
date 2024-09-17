@@ -31,12 +31,28 @@ EDGE = {
 NODE_ORDER = "Age,Risk Factors,COVID19 Status,Cough,Loss of Taste or Smell,Tested Result".split(',')
 
 
-def get_joint_distribution(target: str, df: pd.DataFrame) -> dict:
+def decorate(table, caption, label):
+    cols = table.columns.values.tolist()
+    new_cols = [*cols[:2], *[col.split(' = ')[-1] for col in cols[2:]]]
+    table.rename(columns=dict(zip(cols, new_cols)), inplace=True)
+    latex_tab = table.to_latex(index=False,
+                               float_format="{:.2f}".format,
+                               )
+    return latex_tab
+#     table_type = "table" if len(cols) < 5 else "table*"
+#     head = r"""\begin{""" + table_type + r"""}[!ht]
+#     \centering
+#     \adjustbox{max width=\linewidth}{"""
+#     tail = r"""}
+#     \caption{""" + caption + r"""}
+#     \label{tab:""" + label + r"""}
+# \end{""" + table_type + """}"""
+#     return head + latex_tab + tail
+
+
+def get_table(target: str, df: pd.DataFrame) -> dict:
     """
     Find the joint distribution table for the given column [target]; on the evidence record [df]
-    :param target:
-    :param df:
-    :return:
     """
     data_range = DATA_RANGE[target]
     parents = EDGE[target]
@@ -48,15 +64,11 @@ def get_joint_distribution(target: str, df: pd.DataFrame) -> dict:
         cols = [f"{', '.join(parents)} = {comb}" for comb in combinations]
         for col, comb_val in zip(cols, combinations):  # for each parent conditions
             conditional_rows = (df[parents] == comb_val).values.all(axis=-1)  # rows satisfying all parent conditions
-            n_con_rows = conditional_rows.sum()  # number of rows satisfying all parent conditions
-            if n_con_rows == 0:  # in case there is no row satisfying all parent conditions
-                for val in data_range:
-                    tables[val][col] = 0
-            else:
-                for val in data_range:
-                    conditional_target_rows = np.logical_and(target_matched_rows[val], conditional_rows)
-                    n_con_target_rows = conditional_target_rows.sum()  # number of rows satisfying all parent conditions and also the target value
-                    tables[val][col] = n_con_target_rows / n_con_rows
+            n_con_rows = max(1, conditional_rows.sum())  # number of rows satisfying all parent conditions
+            for val in data_range:
+                conditional_target_rows = np.logical_and(target_matched_rows[val], conditional_rows)
+                n_con_target_rows = conditional_target_rows.sum()  # number of rows satisfying all parent conditions and also the target value
+                tables[val][col] = n_con_target_rows / n_con_rows
 
     else:
         for val in data_range:  # directly calculate the unconditional probability
@@ -83,7 +95,6 @@ def generate_sample(tables: dict, evidences: dict = None) -> tuple:
         if parents is None:
             condition = "Non-condition"
         else:
-            # assert all([parent in sampled_values for parent in parents]), "Wrong sampling order!"
             comb = tuple([sampled_values[parent] for parent in parents])
             condition = f"{', '.join(parents)} = {comb}"
         if evidences is None or target not in evidences.keys():
@@ -133,16 +144,17 @@ if __name__ == '__main__':
     print("""Requirement (i): Print out all node tables""")
     TABLES = {}
     for col in columns:
-        TABLES[col] = get_joint_distribution(col, df)
+        TABLES[col] = get_table(col, df)
         print("Node: {} ".format(col))
         node_table = df.from_dict(TABLES[col]).T
         node_table.index.name = f"{col} Value"
         node_table = node_table.apply(round_prob)
         node_table = node_table.reset_index().reset_index(drop=True)
 
-        print(node_table.to_latex(index=False,
-                                  float_format="{:.2f}".format,
-                                  ))
+        latex_tab = decorate(node_table,
+                             caption="Distribution Table of {}".format(col),
+                             label=col[:4].lower())
+        print(latex_tab)
         print('-' * 20)
 
     print("""Requirement (ii): calculate P(Risk Factors | Loss of Taste or Smell = 1, Cough = 0) \
@@ -155,6 +167,7 @@ if __name__ == '__main__':
         samples.append({target: vals[target], 'w': w})
     distribution = df.from_records(samples).groupby(target)['w'].sum().reset_index()
     distribution['w'] = distribution['w'] / distribution['w'].sum()
+    distribution['w'] = round_prob(distribution['w'], 2)
     distribution.rename(columns={'w': 'P(Risk Factors | Loss of Taste or Smell = 1, Cough = 0)'})
     print(distribution.to_latex(index=False,
                                 float_format="{:.2f}".format,
