@@ -95,7 +95,7 @@ def generate_sample(tables: dict, evidences: dict = None) -> tuple:
         if parents is None:
             condition = "Non-condition"
         else:
-            comb = tuple([sampled_values[parent] for parent in parents])
+            comb = tuple([int(sampled_values[parent]) for parent in parents])
             condition = f"{', '.join(parents)} = {comb}"
         if evidences is None or target not in evidences.keys():
             vals = DATA_RANGE[target]
