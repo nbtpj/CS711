@@ -12,10 +12,15 @@ class Block:
     def __str__(self):
         return f"{self.label}_{self.color}"
 
+    @property
+    def latex(self) -> str:
+        return self.label + "_{" + self.color + "}"
+
 
 @dataclass
 class State:
     pipes: Union[Dict[str, List[Block]], List[List[Block]]]
+    n_block: int = None
 
     def __post_init__(self):
         if isinstance(self.pipes, List):
@@ -26,6 +31,7 @@ class State:
         for block in list(itertools.chain(*[p for p in self.pipes.values()])):
             if str(block) not in self.pipes:
                 self.pipes[str(block)] = []
+        self.n_block = len(list(itertools.chain(*[p for p in self.pipes.values()])))
 
     @property
     def empty_pipes(self) -> List[str]:
@@ -55,7 +61,17 @@ class State:
         output = []
         for k, v in self.non_empty_pipes.items():
             output.append('[' + ', '.join([str(b) for b in v]) + ']')
-        return '--'.join(output)
+        return '\n'.join(output)
+
+    @property
+    def latex(self) -> str:
+        lines = []
+        for k, v in self.pipes.items():
+            line = [b.latex for b in v] + ["0", ] * (self.n_block - len(v))
+            line = '&\t'.join(line)
+            lines.append(line)
+        lines = (r" \\ ").join(lines)
+        return r"""\begin{bmatrix}""" + lines + r"""\end{bmatrix}"""
 
 
 _PLACING_NEW_COST: dict = {
@@ -102,6 +118,7 @@ def heuristic_estimation(state: State, terminal_state: State) -> float:
                 break
             else:
                 n_match += 1
+        # remaining_cost = - n_match*_PLACING_NEW_COST["other"]
         remaining_cost += max(len(current_pipe) - n_match, len(expected_pipe) - n_match) * _PLACING_NEW_COST["other"]
         if n_match == 0 and len(expected_pipe) > 0:
             remaining_cost = remaining_cost - _PLACING_NEW_COST["other"] + _PLACING_NEW_COST[expected_pipe[0].color]
@@ -128,8 +145,13 @@ if __name__ == "__main__":
         print(f"Iteration {iter_}")
         print(f"Best State: \n{buffer[0][0]};\t\t\t cost: {buffer[0][1]};\t heuristic_cost: {buffer[0][2]}")
         print(f"Buffer:")
+
         for i, (reference_state, cost, heuristic_val, _) in enumerate(buffer):
-            print(f"{reference_state};\t\t\t cost: {cost};\t heuristic_cost: {heuristic_val}")
+            # if iter_ < 5:
+            #     print(f"{reference_state.latex}")
+            #     print(f"cost: {cost};\t heuristic_cost: {heuristic_val}")
+            # else:
+                print(f"{reference_state}\n{cost}/{heuristic_val}")
         print('-' * 30)
 
 
