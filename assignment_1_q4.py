@@ -119,8 +119,8 @@ if __name__ == "__main__":
     ])
 
     # A* search
-    # buffer of shape list of tuples of (state, total cost, estimate heuristic cost)
-    buffer = [[initial_state, 0, heuristic_estimation(initial_state, terminal_state), []]]
+    # buffer of shape list of tuples of (state, total cost, estimate heuristic cost, solution)
+    buffer = [[initial_state, 0, heuristic_estimation(initial_state, terminal_state), [initial_state]]]
     searched = [initial_state]
 
 
