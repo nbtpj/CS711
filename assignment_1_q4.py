@@ -170,7 +170,8 @@ if __name__ == "__main__":
             print("Reached terminal state!")
             solutions = buffer[0][-1]
             print("SOLUTION: ")
-            for h in solutions:
+            for i, h in enumerate(solutions):
+                print("ITER: ", i)
                 print(h)
             print(f"TOTAL COST: {current_cost}")
             print('-' * 30)
