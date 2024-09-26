@@ -43,9 +43,9 @@ rewards = reward(batch_s, batch_a, batch_sp)
 shaped_probs = transition_probs.reshape(4, 2, 4, )
 shaped_rewards = rewards.reshape(4, 2, 4, )
 
-for s, a, sp, prob, r in zip(batch_s, batch_a, batch_sp, transition_probs, rewards):
-    print(
-        f'Pr({np.argmax(sp).item()}|{np.argmax(s).item()}, {a}) = {prob}\t R({np.argmax(sp).item()}|{np.argmax(s).item()}, {a}) = {r}')
+# for s, a, sp, prob, r in zip(batch_s, batch_a, batch_sp, transition_probs, rewards):
+#     print(
+#         f'Pr({np.argmax(sp).item()}|{np.argmax(s).item()}, {a}) = {prob}\t R({np.argmax(sp).item()}|{np.argmax(s).item()}, {a}) = {r}')
 
 
 # ------------------------- Policy Iteration ---------------------
@@ -56,29 +56,31 @@ def print_v(V):
     print(';\t'.join(V_txt))
 
 
-for value_iteration in range(10):
+for value_iteration in range(1000):
     Q_sa = (shaped_probs * (shaped_rewards + gamma * V[None, None, :])).sum(axis=-1)
     arg_max_idx = np.argmax(Q_sa, axis=-1).reshape(-1)
     V = Q_sa[np.arange(4), arg_max_idx]
     pi = A[arg_max_idx]
-    print_v(V)
+print('policy iter solver: ')
+print_v(V)
 
 # --------------------- Linear Programing ------------------------
 import cvxpy as cp
 
-V = cp.Variable((S.shape[0],))
+V = cp.Variable(S.shape[0])
 
-objective = cp.Minimize(V.sum())  # Problem Objective
+objective = cp.Minimize(cp.sum(V))  # Problem Objective
 constraints = []  # List of Constraints
 
 for s, _ in enumerate(S):
     for a, _ in enumerate(A):
-
-        Q_sa = (shaped_probs[s, a] @ (shaped_rewards[s, a] + gamma * V[s])).sum(axis=-1)
+        Q_sa = shaped_probs[s, a] @ shaped_rewards[s, a] + gamma * (shaped_probs[s, a] @ V)
 
         constraints += [V[s] >= Q_sa]
 prob = cp.Problem(objective, constraints)
 
 # The optimal objective is returned by prob.solve()
-prob.solve(solver = cp.GLPK, verbose = False)
+prob.solve(solver=cp.GLPK, verbose=False)
+
+print('LP solver: ')
 print_v(V.value.reshape(-1))
