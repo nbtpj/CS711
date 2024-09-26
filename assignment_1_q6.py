@@ -28,7 +28,6 @@ C = np.array([
     [2.0, 1.8, 1.0, 0.0],
 ])
 
-
 gamma = 0.95
 sasp = list(itertools.product(S, A, S))
 batch_s = np.stack([i_[0] for i_ in sasp], axis=0)
@@ -36,7 +35,7 @@ batch_a = np.stack([i_[1] for i_ in sasp], axis=0)
 batch_sp = np.stack([i_[2] for i_ in sasp], axis=0)
 
 transition = lambda s, a, s_prime: a.reshape(-1) * (s @ T_1 * s_prime).sum(axis=-1) + (1 - a).reshape(-1) * (
-            s_prime * T_0).sum(axis=-1)
+        s_prime * T_0).sum(axis=-1)
 reward = lambda s, a, s_prime: a.reshape(-1) * (s @ F * s_prime).sum(axis=-1) - (s @ C * s_prime).sum(axis=-1)
 
 transition_probs = transition(batch_s, batch_a, batch_sp)
@@ -44,13 +43,42 @@ rewards = reward(batch_s, batch_a, batch_sp)
 shaped_probs = transition_probs.reshape(4, 2, 4, )
 shaped_rewards = rewards.reshape(4, 2, 4, )
 
+for s, a, sp, prob, r in zip(batch_s, batch_a, batch_sp, transition_probs, rewards):
+    print(
+        f'Pr({np.argmax(sp).item()}|{np.argmax(s).item()}, {a}) = {prob}\t R({np.argmax(sp).item()}|{np.argmax(s).item()}, {a}) = {r}')
+
+
+# ------------------------- Policy Iteration ---------------------
+def print_v(V):
+    V_txt = []
+    for i, v in enumerate(V):
+        V_txt.append(f'V(A_{i}) = {v:.1f}')
+    print(';\t'.join(V_txt))
+
+
 for value_iteration in range(10):
     Q_sa = (shaped_probs * (shaped_rewards + gamma * V[None, None, :])).sum(axis=-1)
     arg_max_idx = np.argmax(Q_sa, axis=-1).reshape(-1)
     V = Q_sa[np.arange(4), arg_max_idx]
     pi = A[arg_max_idx]
-    # print(Q_sa)
-    print(pi, V)
+    print_v(V)
 
-for s, a, sp, prob, r in zip(batch_s, batch_a, batch_sp, transition_probs, rewards):
-    print(f'Pr({np.argmax(sp).item()}|{np.argmax(s).item()}, {a}) = {prob}\t R({np.argmax(sp).item()}|{np.argmax(s).item()}, {a}) = {r}')
+# --------------------- Linear Programing ------------------------
+import cvxpy as cp
+
+V = cp.Variable((S.shape[0],))
+
+objective = cp.Minimize(V.sum())  # Problem Objective
+constraints = []  # List of Constraints
+
+for s, _ in enumerate(S):
+    for a, _ in enumerate(A):
+
+        Q_sa = (shaped_probs[s, a] @ (shaped_rewards[s, a] + gamma * V[s])).sum(axis=-1)
+
+        constraints += [V[s] >= Q_sa]
+prob = cp.Problem(objective, constraints)
+
+# The optimal objective is returned by prob.solve()
+prob.solve(solver = cp.GLPK, verbose = False)
+print_v(V.value.reshape(-1))
