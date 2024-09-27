@@ -10,7 +10,8 @@ T_1 = np.array([
     [0.4, 0.3, 0.0, 0.3],
     [0.5, 0.25, 0.25, 0.0],
 ])
-T_0 = np.array([0.25, 0.3, 0.35, 0.1])
+T_0 = np.eye(4)
+p_0 = np.array([0.25, 0.3, 0.35, 0.1])
 
 V = np.zeros((S.shape[0],))
 pi = np.zeros((S.shape[0],))
@@ -34,21 +35,24 @@ batch_s = np.stack([i_[0] for i_ in sasp], axis=0).reshape(4, 2, 4, 4)
 batch_a = np.stack([i_[1] for i_ in sasp], axis=0).reshape(4, 2, 4, )
 batch_sp = np.stack([i_[2] for i_ in sasp], axis=0).reshape(4, 2, 4, 4)
 
-transition = lambda s, a, s_prime: a * (s @ T_1 * s_prime).sum(axis=-1) + (1 - a) * (
-        s_prime * T_0).sum(axis=-1)
-reward = lambda s, a, s_prime: a * (s @ F * s_prime).sum(axis=-1) - (s @ C * s_prime).sum(axis=-1)
+transition = lambda s, a, s_prime: (a * (s @ T_1 * s_prime).sum(axis=-1)
+                                    + (1 - a) * (s @ T_0 * s_prime).sum(axis=-1))
+reward = lambda s, a, s_prime: (a * (s @ p_0) * (s @ F * s_prime).sum(axis=-1)
+                                - (s @ C * s_prime).sum(axis=-1))
 
 shaped_probs = transition(batch_s, batch_a, batch_sp)
 shaped_rewards = reward(batch_s, batch_a, batch_sp)
 
-
+# t = batch_s @ p_0
+# t_1 = batch_s @ F * batch_sp
 # ------------------------- Policy Iteration ---------------------
 print('--------------------- Policy Iteration ------------------------')
+
 
 def print_v(V):
     V_txt = []
     for i, v in enumerate(V):
-        V_txt.append(f'V(A_{i}) = {v:.1f}')
+        V_txt.append(f'V(A_{i+1}) = {v:.1f}')
     print(';\t'.join(V_txt))
 
 

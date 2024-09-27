@@ -1,6 +1,6 @@
 import copy
 from dataclasses import dataclass
-from typing import List, Dict, Optional, Tuple, OrderedDict, Set, Union
+from typing import List, Dict, Tuple, Set, Union
 import itertools
 
 
@@ -147,10 +147,6 @@ if __name__ == "__main__":
         print(f"Buffer:")
 
         for i, (reference_state, cost, heuristic_val, _) in enumerate(buffer):
-            # if iter_ < 5:
-            #     print(f"{reference_state.latex}")
-            #     print(f"cost: {cost};\t heuristic_cost: {heuristic_val}")
-            # else:
                 print(f"{reference_state}\n{cost}/{heuristic_val}")
         print('-' * 30)
 
@@ -158,7 +154,6 @@ if __name__ == "__main__":
     for iteration in range(int(1e4)):
         # each state discovery
         buffer = sorted(buffer, key=lambda x: x[1] + x[2])
-        # buffer = sorted(buffer, key=lambda x: x[2])
 
         # select best state to discovery: the state having the lowest value
         state = buffer[0][0]
