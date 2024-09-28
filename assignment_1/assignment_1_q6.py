@@ -43,8 +43,6 @@ reward = lambda s, a, s_prime: (a * (s @ p_0) * (s @ F * s_prime).sum(axis=-1)
 shaped_probs = transition(batch_s, batch_a, batch_sp)
 shaped_rewards = reward(batch_s, batch_a, batch_sp)
 
-# t = batch_s @ p_0
-# t_1 = batch_s @ F * batch_sp
 # ------------------------- Policy Iteration ---------------------
 print('--------------------- Policy Iteration ------------------------')
 
@@ -72,9 +70,8 @@ print('--------------------- Linear Programing ------------------------')
 import cvxpy as cp
 
 V = cp.Variable(S.shape[0])
-b_0 = np.ones((S.shape[0]))
 
-objective = cp.Minimize(b_0 @ V)
+objective = cp.Minimize(cp.sum(V))
 constraints = []
 
 for s, _ in enumerate(S):

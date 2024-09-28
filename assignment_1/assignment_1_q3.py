@@ -39,15 +39,6 @@ def decorate(table, caption, label):
                                float_format="{:.2f}".format,
                                )
     return latex_tab
-#     table_type = "table" if len(cols) < 5 else "table*"
-#     head = r"""\begin{""" + table_type + r"""}[!ht]
-#     \centering
-#     \adjustbox{max width=\linewidth}{"""
-#     tail = r"""}
-#     \caption{""" + caption + r"""}
-#     \label{tab:""" + label + r"""}
-# \end{""" + table_type + """}"""
-#     return head + latex_tab + tail
 
 
 def get_table(target: str, df: pd.DataFrame) -> dict:
@@ -108,7 +99,7 @@ def generate_sample(tables: dict, evidences: dict = None) -> tuple:
     return sampled_values, weight
 
 
-def MPA(tables: dict, evidences: dict) -> tuple:
+def MPE(tables: dict, evidences: dict) -> tuple:
     """ Brute Force Algorithm by generating all possible values and corresponding probabilities"""
     # P(evidences) is constant, then we don't care it
     Xn = tuple(set(NODE_ORDER) - set(evidences.keys()))
@@ -176,7 +167,7 @@ if __name__ == '__main__':
     print("""Requirement (iii): What is the most probable explanation for someone who has cough and is \
     35 years of age?""")
     evidences = {"Cough": 1, "Age": 1}
-    _map, prob, full_estimation = MPA(tables=TABLES, evidences=evidences)
+    _map, prob, full_estimation = MPE(tables=TABLES, evidences=evidences)
     print("MAP({}) = {}".format(evidences, _map), "with the probability of {:.2f}%".format(prob * 100))
     print("The full estimation is the table below:")
     print(full_estimation.to_latex(index=False,
