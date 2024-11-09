@@ -129,6 +129,12 @@ class DQN:
             if (i + 1) % self.interval_Q_update == 0:
                 self.target_Q.load_state_dict(self.Q.state_dict())
 
+    def save(self, path):
+        torch.save(self.Q.state_dict(), path)
+
+    def load(self, path):
+        self.Q.load_state_dict(torch.load(path, map_location=self.device))
+
 
 class REINFORCE:
     def __init__(self, env, device='mps', gamma=0.99, collect_step: int = int(512), K_epoch: int = 2):
@@ -234,6 +240,12 @@ class REINFORCE:
                 print(f"J (pi) = {eval_return:.4f}")
                 np.savetxt(f'REINFORCE.txt', validation_returns)
 
+    def save(self, path):
+        torch.save(self.pi.state_dict(), path)
+
+    def load(self, path):
+        self.pi.load_state_dict(torch.load(path, map_location=self.device))
+
 
 if __name__ == '__main__':
     from ale_py import ALEInterface
@@ -242,4 +254,6 @@ if __name__ == '__main__':
     env = TimeLimit(gym.make("ALE/Pong-v5", obs_type="ram"), 2000)
     # policy = DQN(env, device="mps")
     policy = REINFORCE(env, device="mps")
-    policy.learn()
+    policy.learn(20)
+    policy.save('REINFORCE.pth')
+    policy.load('REINFORCE.pth')
