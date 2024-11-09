@@ -107,9 +107,10 @@ class DQN:
         log_prob = distribution.log_prob(act)
         return act.cpu().numpy(), log_prob.cpu().numpy()
 
-    def learn(self, n_steps: int = 1000000, validation_interval: int = 5000,
+    def learn(self, n_steps: int = 10000000, validation_interval: int = 5000,
               batch_size=64, warmup_steps: int = 25000, n_episodes: int = 5):
         obs, info = self.env.reset()
+        validation_returns = []
         for i in trange(n_steps):
             if i + 1 < warmup_steps:
                 action = self.action_space.sample()
@@ -120,21 +121,25 @@ class DQN:
             q_loss = self.update(batch_size=batch_size)
             obs = next_obs
             if (i + 1) % validation_interval == 0:
+                eval_return = validate_policy(self, self.eval_env, n_episodes=n_episodes)
                 print(f"Q loss = {q_loss:.4f}")
-                print(f"J (pi) = {validate_policy(self, self.eval_env, n_episodes=n_episodes):.4f}")
+                print(f"J (pi) = {eval_return:.4f}")
+                validation_returns.append(eval_return)
+                np.savetxt(f'DQN.txt', validation_returns)
             if (i + 1) % self.interval_Q_update == 0:
                 self.target_Q.load_state_dict(self.Q.state_dict())
 
 
 class REINFORCE:
-    def __init__(self, env, device='mps', gamma=0.99, interval_Q_update: int = 100):
+    def __init__(self, env, device='mps', gamma=0.99, collect_step: int = int(512), K_epoch: int = 2):
         self.env = env
         self.eval_env = copy.deepcopy(env)
         self.gamma = gamma
         self.observation_space = self.env.observation_space
         self.action_space = self.env.action_space
         self.device = device
-        # self.interval_Q_update = interval_Q_update
+        self.collect_step = collect_step
+        self.K_epoch = K_epoch
         assert isinstance(self.action_space, spaces.Discrete)
         obs_dim = get_dim(self.env.observation_space)
         act_dim = get_dim(self.env.action_space)
@@ -142,106 +147,99 @@ class REINFORCE:
                                 nn.Linear(64, 64, ), nn.ReLU(),
                                 nn.Linear(64, act_dim), ).to(self.device)
         self.optimizer = torch.optim.Adam(self.pi.parameters(), lr=3e-4)
-        self.buffer = ReplayBuffer(int(1e6), self.observation_space, self.action_space, n_envs=1)
+
+    def forward(self, obs_ts: torch.Tensor):
+        logits = self.pi(obs_ts)
+        distribution = dist.Categorical(logits=logits)
+        action = distribution.sample()
+        return action, distribution.log_prob(action)
 
     def log_prob(self, obs_ts: torch.Tensor, act: torch.Tensor):
         logits = self.pi(obs_ts)
         distribution = dist.Categorical(logits=logits)
         return distribution.log_prob(act)
 
-    def update(self, batch_size):
-        (obs, act, _, _, niu) = self.buffer.sample(batch_size)
-        obs_ts = obs2tensor(obs, self.observation_space).to(self.device).float()
-        log_prob = self.log_prob(obs_ts)
-        pi_loss = -log_prob * niu
-
+    def update(self, obs_ts: torch.Tensor, act: torch.Tensor, R: torch.Tensor):
+        log_prob = self.log_prob(obs_ts, act)
+        pi_loss = (-log_prob * R).mean()
         self.optimizer.zero_grad()
         pi_loss.backward()
         self.optimizer.step()
         return pi_loss.item()
 
-    def forward(self, obs_ts: torch.Tensor):
-        logits = self.Q(obs_ts)
-        distribution = dist.Categorical(logits=logits)
-
-        act = distribution.sample().detach()
-        log_prob = distribution.log_prob(act)
-        return act, log_prob
-
     @torch.no_grad()
     def act(self, obs: np.ndarray, deterministic=True) -> Tuple[np.ndarray, np.ndarray]:
         obs_ts = obs2tensor(obs, self.observation_space).to(self.device).float()
-        logits = self.Q(obs_ts)
+        logits = self.pi(obs_ts)
         distribution = dist.Categorical(logits=logits)
 
         if deterministic:
-            act = torch.argmax(self.Q(obs_ts), dim=-1)
+            act = torch.argmax(self.pi(obs_ts), dim=-1)
         else:
             act = distribution.sample().detach()
         log_prob = distribution.log_prob(act)
         return act.cpu().numpy(), log_prob.cpu().numpy()
 
-    def learn(self, n_steps: int = 1000000, validation_interval: int = 5000,
-              batch_size=64, warmup_steps: int = 25000, n_episodes: int = 5):
+    def learn(self, n_steps: int = 10000000, validation_interval: int = 5000,
+              batch_size=64, n_episodes: int = 5):
         obs, info = self.env.reset()
+        validation_returns = []
+        rollout_buffer = {
+            "obs": [],
+            "act": [],
+            "r": [],
+            "done": []
+        }
+        pi_loss = 0
+
         for i in trange(n_steps):
-            if i + 1 < warmup_steps:
-                action = self.action_space.sample()
-            else:
-                action, log_prob = self.act(obs, deterministic=False)  # Thomson Sampling
+            action, log_prob = self.act(obs, deterministic=False)  # Thomson Sampling
             next_obs, reward, done, truncated, info = self.env.step(action)
-            self.buffer.add(obs=obs, next_obs=next_obs, reward=reward, done=done, infos=[info], action=action)
-            q_loss = self.update(batch_size=batch_size)
+            rollout_buffer["obs"].append(obs2tensor(obs, self.observation_space).float())
+            rollout_buffer["act"].append(torch.tensor(action).long())
+            rollout_buffer["r"].append(torch.tensor(reward).float())
+            rollout_buffer["done"].append(torch.tensor(done).float())
             obs = next_obs
+
+            # q_loss = self.update(batch_size=batch_size)
+            if (i + 1) % self.collect_step == 0:
+                pi_loss = []
+                # compute nR (MCMC)
+                R = []
+                last_R = 0
+                for i in reversed(range(len(rollout_buffer["r"]))):
+                    last_R = rollout_buffer["r"][i] + self.gamma * last_R * (1 - rollout_buffer["done"][i])
+                    R.append(last_R)
+                rollout_buffer = {k: torch.stack(v, dim=0).to(self.device) for k, v in rollout_buffer.items()}
+                rollout_buffer["R"] = torch.tensor(R).to(self.device).float()
+                for ep in trange(self.K_epoch):
+                    indices = np.arange(rollout_buffer["R"].shape[0])
+                    np.random.shuffle(indices)
+                    for batch_ids in torch.split(torch.tensor(indices), batch_size):
+                        _pi_loss = self.update(rollout_buffer["obs"][batch_ids], rollout_buffer["act"][batch_ids],
+                                               rollout_buffer["R"][batch_ids])
+                        pi_loss.append(_pi_loss)
+                # reset buffer
+                rollout_buffer = {
+                    "obs": [],
+                    "act": [],
+                    "r": [],
+                    "done": []
+                }
+                obs, info = self.env.reset()
             if (i + 1) % validation_interval == 0:
-                print(f"Q loss = {q_loss:.4f}")
-                print(f"J (pi) = {validate_policy(self, self.eval_env, n_episodes=n_episodes):.4f}")
-            if (i + 1) % self.interval_Q_update == 0:
-                self.target_Q.load_state_dict(self.Q.state_dict())
+                eval_return = validate_policy(self, self.eval_env, n_episodes=n_episodes)
+                validation_returns.append(eval_return)
+                print(f"Pi loss = {np.mean(pi_loss):.4f}")
+                print(f"J (pi) = {eval_return:.4f}")
+                np.savetxt(f'REINFORCE.txt', validation_returns)
 
-
-# class ActorCriticPolicy(nn.Module):
-#     def __init__(self, observation_space: spaces.Space, action_space: spaces.Discrete):
-#         super(ActorCriticPolicy, self).__init__()
-#         self.observation_space = observation_space
-#         self.action_space = action_space
-#         obs_dim = self.get_dim(observation_space)
-#         act_dim = self.get_dim(action_space)
-#
-#         self.actor = nn.Sequential(nn.Linear(obs_dim, 64, ), nn.ReLU(),
-#                                    nn.Linear(64, 64, ), nn.ReLU(),
-#                                    nn.Linear(64, act_dim))
-#         self.critic = nn.Sequential(nn.Linear(obs_dim + act_dim, 64, ), nn.ReLU(),
-#                                     nn.Linear(64, 64, ), nn.ReLU(),
-#                                     nn.Linear(64, 1))
-#
-#     def forward_actor(self, obs: torch.Tensor) -> dist.Categorical:
-#         obs_ts = obs2tensor(obs, self.observation_space)
-#         logits = self.actor(obs_ts)
-#         distribution = dist.Categorical(logits=logits)
-#         return distribution
-#
-#     def forward_critic(self, obs: torch.Tensor, act: torch.Tensor) -> torch.Tensor:
-#         obs_ts = obs2tensor(obs, self.observation_space)
-#         act_ts = obs2tensor(act, self.action_space)
-#         return self.critic(torch.cat([obs_ts, act_ts], dim=-1))
 
 if __name__ == '__main__':
     from ale_py import ALEInterface
 
     ale = ALEInterface()
     env = TimeLimit(gym.make("ALE/Pong-v5", obs_type="ram"), 2000)
-    policy = DQN(env, device="mps")
+    # policy = DQN(env, device="mps")
+    policy = REINFORCE(env, device="mps")
     policy.learn()
-# if __name__ == "__main__":
-#     from stable_baselines3 import DQN
-#     from ale_py import ALEInterface
-#
-#     ale = ALEInterface()
-#     env = TimeLimit(gym.make("ALE/Pong-v5", obs_type="ram"), 2000)
-#
-#     # fully observable
-#     # env = TimeLimit(FlattenEnvWrapper(Env()), 100)
-#
-#     model = DQN("MlpPolicy", env, verbose=1)
-#     model.learn(total_timesteps=1000000, log_interval=1)

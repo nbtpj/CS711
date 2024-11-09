@@ -303,12 +303,15 @@ class FlattenEnvWrapper(gym.Wrapper):
         return obs, info
 if __name__ == '__main__':
     # from ale_py import ALEInterface
-    from policy import DQN
+    from policy import DQN, REINFORCE
     # ale = ALEInterface()
     # env = TimeLimit(gym.make("ALE/Pong-v5", obs_type="ram"), 2000)
-    env = TimeLimit(FlattenEnvWrapper(PartiallyObservable(Env())), 100)
-    policy = DQN(env, device="mps")
-    policy.learn(n_steps=1000000, warmup_steps=1000, validation_interval=1000, batch_size=256)
+    # env = TimeLimit(FlattenEnvWrapper(PartiallyObservable(Env())), 100)
+    # policy = DQN(env, device="mps")
+    # policy.learn(n_steps=1000000, warmup_steps=1000, validation_interval=1000, batch_size=256)
+    env = TimeLimit(FlattenEnvWrapper(Env()), 100)
+    policy = REINFORCE(env, device="mps")
+    policy.learn(n_steps=1000000, validation_interval=1000, batch_size=256)
 
 # if __name__ == "__main__":
 #     import time
