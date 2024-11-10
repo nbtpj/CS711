@@ -311,13 +311,30 @@ if __name__ == '__main__':
     env_1 = TimeLimit(FlattenEnvWrapper(PartiallyObservable(Env())), 100)
     env_2 = TimeLimit(FlattenEnvWrapper(FeatureQObservable(Env())), 100)
     env_3 = TimeLimit(FlattenEnvWrapper(Env()), 100)
-    for env, name in zip([env_1, env_2, env_3], ['PARTIALLY_OBSERVABLE', 'FEATURE_Q', 'COMPLETE']):
+    # for env, name in zip([env_1, env_2, env_3], ['PARTIALLY_OBSERVABLE', 'FEATURE_Q', 'COMPLETE']):
+    #     for seed in range(5):
+    #         set_random_seed(seed)
+    #         policy = DQN(env, device="mps")
+    #         policy.learn(n_steps=10000, warmup_steps=1000, validation_interval=500, batch_size=32,
+    #                      save_validation_to=f"{name}_{seed}_DQN.txt")
+    #         policy.save(f'{name}_{seed}_DQN.pth')
+
+    for name, color in zip(['PARTIALLY_OBSERVABLE', 'FEATURE_Q', 'COMPLETE'], ['red', 'blue', 'green']):
+        arr = []
         for seed in range(5):
-            set_random_seed(seed)
-            policy = DQN(env, device="mps")
-            policy.learn(n_steps=10000, warmup_steps=1000, validation_interval=500, batch_size=32,
-                         save_validation_to=f"{name}_{seed}_DQN.txt")
-            policy.save(f'{name}_{seed}_DQN.pth')
+            arr.append(np.loadtxt(f"{name}_{seed}_DQN.txt"))
+        arr = np.array(arr)
+        mean = np.mean(arr, axis=0)
+        std = np.std(arr, axis=0)
+
+        step = np.arange(len(arr[0])) * 500
+        plt.plot(step, mean, label=name,  color=color)
+        plt.fill_between(step,
+                         (mean - std).flatten(),
+                         (mean + std).flatten(),
+                         alpha=0.1, color=color)
+    plt.legend()
+    plt.show()
     # env = TimeLimit(FlattenEnvWrapper(Env()), 100)
     # policy = REINFORCE(env, device="mps")
     # policy.learn(n_steps=1000000, validation_interval=1000, batch_size=256)
