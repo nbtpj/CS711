@@ -301,17 +301,26 @@ class FlattenEnvWrapper(gym.Wrapper):
 
         obs = self.cvt(obs)
         return obs, info
+
+
 if __name__ == '__main__':
-    # from ale_py import ALEInterface
-    from policy import DQN, REINFORCE
-    # ale = ALEInterface()
-    # env = TimeLimit(gym.make("ALE/Pong-v5", obs_type="ram"), 2000)
-    # env = TimeLimit(FlattenEnvWrapper(PartiallyObservable(Env())), 100)
-    # policy = DQN(env, device="mps")
-    # policy.learn(n_steps=1000000, warmup_steps=1000, validation_interval=1000, batch_size=256)
-    env = TimeLimit(FlattenEnvWrapper(Env()), 100)
-    policy = REINFORCE(env, device="mps")
-    policy.learn(n_steps=1000000, validation_interval=1000, batch_size=256)
+    from stable_baselines3.common.utils import set_random_seed
+    from policy import DQN
+
+
+    env_1 = TimeLimit(FlattenEnvWrapper(PartiallyObservable(Env())), 100)
+    env_2 = TimeLimit(FlattenEnvWrapper(FeatureQObservable(Env())), 100)
+    env_3 = TimeLimit(FlattenEnvWrapper(Env()), 100)
+    for env, name in zip([env_1, env_2, env_3], ['PARTIALLY_OBSERVABLE', 'FEATURE_Q', 'COMPLETE']):
+        for seed in range(5):
+            set_random_seed(seed)
+            policy = DQN(env, device="mps")
+            policy.learn(n_steps=10000, warmup_steps=1000, validation_interval=500, batch_size=32,
+                         save_validation_to=f"{name}_{seed}_DQN.txt")
+            policy.save(f'{name}_{seed}_DQN.pth')
+    # env = TimeLimit(FlattenEnvWrapper(Env()), 100)
+    # policy = REINFORCE(env, device="mps")
+    # policy.learn(n_steps=1000000, validation_interval=1000, batch_size=256)
 
 # if __name__ == "__main__":
 #     import time
@@ -329,13 +338,13 @@ if __name__ == '__main__':
 #     model = DQN("MlpPolicy", env, verbose=1)
 #     model.learn(total_timesteps=100000, log_interval=1)
 
-    # s, _ = env.reset()
-    # while True:
-    #     env.render()
-    #     time.sleep(1)
-    #     # action = 0
-    #     action = env.action_space.sample()
-    #     print('-' * 30)
-    #     print(env.MOVE_NAMES[action])
-    #     print('-' * 30)
-    #     s, r, _, _, _ = env.step(action)
+# s, _ = env.reset()
+# while True:
+#     env.render()
+#     time.sleep(1)
+#     # action = 0
+#     action = env.action_space.sample()
+#     print('-' * 30)
+#     print(env.MOVE_NAMES[action])
+#     print('-' * 30)
+#     s, r, _, _, _ = env.step(action)

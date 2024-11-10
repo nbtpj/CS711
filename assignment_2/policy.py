@@ -49,7 +49,7 @@ def validate_policy(actor, env: gym.Env, n_episodes: int = 5):
     total_return = 0
     for i in trange(n_episodes):
         obs, info = env.reset()
-        for j in range(1000):
+        for j in range(5000):
             action, log_prob = actor.act(obs)
             obs, reward, done, truncated, info = env.step(action)
             total_return += reward
@@ -83,7 +83,7 @@ class DQN:
         act = act.reshape(-1)
         next_obs = obs2tensor(next_obs, self.observation_space).to(self.device).float()
         reward, done = (reward).to(self.device).reshape(-1), (done).to(self.device).float().reshape(-1)
-        reward = (reward - reward.mean()) / (reward.std() + 1e-6)
+        # reward = (reward - reward.mean()) / (reward.std() + 1e-6)
         with (torch.no_grad()):
             nx_Q = self.target_Q(next_obs)
             target_q_values = reward + self.gamma * (1 - done) * torch.amax(nx_Q, dim=-1, keepdim=False)
@@ -108,7 +108,8 @@ class DQN:
         return act.cpu().numpy(), log_prob.cpu().numpy()
 
     def learn(self, n_steps: int = 10000000, validation_interval: int = 5000,
-              batch_size=64, warmup_steps: int = 25000, n_episodes: int = 5):
+              batch_size=64, warmup_steps: int = 25000, n_episodes: int = 5,
+              save_validation_to: str = f'DQN.txt'):
         obs, info = self.env.reset()
         validation_returns = []
         for i in trange(n_steps):
@@ -120,12 +121,14 @@ class DQN:
             self.buffer.add(obs=obs, next_obs=next_obs, reward=reward, done=done, infos=[info], action=action)
             q_loss = self.update(batch_size=batch_size)
             obs = next_obs
+            if done or truncated:
+                obs, info = self.env.reset()
             if (i + 1) % validation_interval == 0:
                 eval_return = validate_policy(self, self.eval_env, n_episodes=n_episodes)
                 print(f"Q loss = {q_loss:.4f}")
                 print(f"J (pi) = {eval_return:.4f}")
                 validation_returns.append(eval_return)
-                np.savetxt(f'DQN.txt', validation_returns)
+                np.savetxt(save_validation_to, validation_returns)
             if (i + 1) % self.interval_Q_update == 0:
                 self.target_Q.load_state_dict(self.Q.state_dict())
 
@@ -187,7 +190,7 @@ class REINFORCE:
         return act.cpu().numpy(), log_prob.cpu().numpy()
 
     def learn(self, n_steps: int = 10000000, validation_interval: int = 5000,
-              batch_size=64, n_episodes: int = 5):
+              batch_size=64, n_episodes: int = 5, save_validation_to: str = 'REINFORCE.txt'):
         obs, info = self.env.reset()
         validation_returns = []
         rollout_buffer = {
@@ -207,7 +210,9 @@ class REINFORCE:
             rollout_buffer["done"].append(torch.tensor(done).float())
             obs = next_obs
 
-            # q_loss = self.update(batch_size=batch_size)
+            if done or truncated:
+                obs, info = self.env.reset()
+
             if (i + 1) % self.collect_step == 0:
                 pi_loss = []
                 # compute nR (MCMC)
@@ -238,7 +243,7 @@ class REINFORCE:
                 validation_returns.append(eval_return)
                 print(f"Pi loss = {np.mean(pi_loss):.4f}")
                 print(f"J (pi) = {eval_return:.4f}")
-                np.savetxt(f'REINFORCE.txt', validation_returns)
+                np.savetxt(save_validation_to, validation_returns)
 
     def save(self, path):
         torch.save(self.pi.state_dict(), path)
